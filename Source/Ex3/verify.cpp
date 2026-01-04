@@ -3,6 +3,7 @@
 #include <vector>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include <openssl/err.h>
 
 void handleErrors() {
@@ -16,9 +17,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    const char* pub_path = argv[1];
+    const char* msg_path = argv[2];
+    const char* sig_path = argv[3];
+
     // 1. Load Public Key
-    FILE* key_fp = fopen(argv[1], "r");
-    if (!key_fp) handleErrors();
+    FILE* key_fp = fopen(pub_path, "r");
+    if (!key_fp) {
+        std::cerr << "Cannot open public key file: " << pub_path << std::endl;
+        return 1;
+    }
     EVP_PKEY* pubKey = PEM_read_PUBKEY(key_fp, NULL, NULL, NULL);
     fclose(key_fp);
     if (!pubKey) handleErrors();
@@ -28,12 +36,24 @@ int main(int argc, char* argv[]) {
     if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, pubKey) <= 0) handleErrors();
 
     // 3. Read Message & Update Context
-    std::ifstream msgFile(argv[2], std::ios::binary);
+    std::ifstream msgFile(msg_path, std::ios::binary);
+    if (!msgFile) {
+        std::cerr << "Cannot open message file: " << msg_path << std::endl;
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(pubKey);
+        return 1;
+    }
     std::vector<char> msgBuffer((std::istreambuf_iterator<char>(msgFile)), std::istreambuf_iterator<char>());
     if (EVP_DigestVerifyUpdate(mdctx, msgBuffer.data(), msgBuffer.size()) <= 0) handleErrors();
 
     // 4. Read Signature
-    std::ifstream sigFile(argv[3], std::ios::binary);
+    std::ifstream sigFile(sig_path, std::ios::binary);
+    if (!sigFile) {
+        std::cerr << "Cannot open signature file: " << sig_path << std::endl;
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(pubKey);
+        return 1;
+    }
     std::vector<unsigned char> sigBuffer((std::istreambuf_iterator<char>(sigFile)), std::istreambuf_iterator<char>());
 
     // 5. Verify

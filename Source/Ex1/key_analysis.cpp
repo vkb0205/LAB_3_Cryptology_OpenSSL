@@ -17,14 +17,18 @@ void print_bn_line(const char* label, const BIGNUM* bn) {
     OPENSSL_free(dec_str);
 }
 
-int main() {
-    const char* private_key_file = "priv.pem";
-    const char* public_key_file = "pub.pem";
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <priv.pem> <pub.pem>\n";
+            return 1;
+    }
+    const char* private_key_file = argv[1];
+    const char* public_key_file = argv[2];
 
     // Read private key
     FILE* fp_private = fopen(private_key_file, "r");
     if (!fp_private) {
-        std::cerr << "Cannot open file priv.pem" << std::endl;
+        std::cerr << "Cannot open file " << private_key_file << std::endl;
         return 1;
     }
     EVP_PKEY* prikey = PEM_read_PrivateKey(fp_private, NULL, NULL, NULL);
@@ -34,7 +38,7 @@ int main() {
     FILE* fp_public = fopen(public_key_file, "r");
     if (!fp_public) {
         EVP_PKEY_free(prikey);
-        std::cerr << "Cannot open file pub.pem" << std::endl;
+        std::cerr << "Cannot open file " << public_key_file << std::endl;
         return 1;
     }
     EVP_PKEY* pubkey = PEM_read_PUBKEY(fp_public, NULL, NULL, NULL);

@@ -3,6 +3,7 @@
 #include <vector>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include <openssl/err.h>
 
 void handleErrors() {
@@ -16,28 +17,38 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 1. Load Public Key
-    FILE* key_fp = fopen(argv[1], "r");
-    if (!key_fp) handleErrors();
+    const char* pub_path = argv[1];
+    const char* plaintext_path = argv[2];
+    const char* cipher_path = argv[3];
+
+    // Load public key (PEM)
+    FILE* key_fp = fopen(pub_path, "r");
+    if (!key_fp) {
+        std::cerr << "Cannot open public key file: " << pub_path << std::endl;
+        return 1;
+    }
     EVP_PKEY* pubKey = PEM_read_PUBKEY(key_fp, NULL, NULL, NULL);
     fclose(key_fp);
     if (!pubKey) handleErrors();
 
-    // 2. Setup Context for Encryption
+    // Prepare encryption context
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(pubKey, NULL);
     if (!ctx) handleErrors();
     if (EVP_PKEY_encrypt_init(ctx) <= 0) handleErrors();
-    
-    // Explicitly set PKCS#1 padding (Standard for OpenSSL pkeyutl)
     if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_PADDING) <= 0) handleErrors();
 
-    // 3. Read Plaintext
-    std::ifstream inFile(argv[2], std::ios::binary);
+    // Read plaintext
+    std::ifstream inFile(plaintext_path, std::ios::binary);
+    if (!inFile) {
+        std::cerr << "Cannot open plaintext file: " << plaintext_path << std::endl;
+        EVP_PKEY_CTX_free(ctx);
+        EVP_PKEY_free(pubKey);
+        return 1;
+    }
     std::vector<unsigned char> plain((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
 
-    // 4. Encrypt
-    size_t outlen;
-    // Determine required buffer size
+    // Encrypt
+    size_t outlen = 0;
     if (EVP_PKEY_encrypt(ctx, NULL, &outlen, plain.data(), plain.size()) <= 0) {
         std::cerr << "Error: Encryption failed (Is the file too big for RSA?)\n";
         handleErrors();
@@ -46,13 +57,18 @@ int main(int argc, char* argv[]) {
     std::vector<unsigned char> cipher(outlen);
     if (EVP_PKEY_encrypt(ctx, cipher.data(), &outlen, plain.data(), plain.size()) <= 0) handleErrors();
 
-    // 5. Write Ciphertext
-    std::ofstream outFile(argv[3], std::ios::binary);
+    // Write ciphertext
+    std::ofstream outFile(cipher_path, std::ios::binary);
+    if (!outFile) {
+        std::cerr << "Cannot write output file: " << cipher_path << std::endl;
+        EVP_PKEY_CTX_free(ctx);
+        EVP_PKEY_free(pubKey);
+        return 1;
+    }
     outFile.write(reinterpret_cast<const char*>(cipher.data()), outlen);
 
-    std::cout << "Encryption successful! Output: " << argv[3] << std::endl;
+    std::cout << "Encryption successful! Output: " << cipher_path << std::endl;
 
-    // Cleanup
     EVP_PKEY_CTX_free(ctx);
     EVP_PKEY_free(pubKey);
     return 0;
